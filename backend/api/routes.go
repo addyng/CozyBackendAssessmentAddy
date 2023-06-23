@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -87,21 +88,29 @@ func Mount() *chi.Mux {
 
 /* API get endpoint for /posts */
 func getPosts(w http.ResponseWriter, r *http.Request) {
+	var err error
 	// Query for pagination
 	page := r.URL.Query().Get("page")
-	pageint, err := strconv.Atoi(page)
-	checkErr(err)
 	limit := r.URL.Query().Get("limit")
-	limitint, err := strconv.Atoi(limit)
-	checkErr(err)
-	offset := (pageint - 1) * limitint
 
 	// Optional query for user
 	user := r.URL.Query().Get("user")
 
 	// Query for posts
-	rows, err := database.DB.Query("SELECT posts.id, posts.title, posts.content, posts.post_date, posts.author_id, users.name, users.birthday, users.avatar, COUNT(likes.user_id) FROM posts INNER JOIN users ON posts.author_id = users.id LEFT JOIN likes ON posts.id = likes.post_id GROUP BY posts.id, users.id LIMIT $1 OFFSET $2", limitint, offset)
-	checkErr(err)
+	var rows *sql.Rows
+	if page != "" && limit != "" {
+		pageInt, err := strconv.Atoi(page)
+		checkErr(err)
+		limitInt, err := strconv.Atoi(limit)
+		checkErr(err)
+		offset := (pageInt - 1) * limitInt
+
+		rows, err = database.DB.Query("SELECT posts.id, posts.title, posts.content, posts.post_date, posts.author_id, users.name, users.birthday, users.avatar, COUNT(likes.user_id) FROM posts INNER JOIN users ON posts.author_id = users.id LEFT JOIN likes ON posts.id = likes.post_id GROUP BY posts.id, users.id LIMIT $1 OFFSET $2", limitInt, offset)
+		checkErr(err)
+	} else {
+		rows, err = database.DB.Query("SELECT posts.id, posts.title, posts.content, posts.post_date, posts.author_id, users.name, users.birthday, users.avatar, COUNT(likes.user_id) FROM posts INNER JOIN users ON posts.author_id = users.id LEFT JOIN likes ON posts.id = likes.post_id GROUP BY posts.id, users.id ORDER BY posts.id")
+		checkErr(err)
+	}
 
 	// Slice of posts
 	allPosts := []Posts{}
@@ -241,12 +250,7 @@ func getPostsWithID(w http.ResponseWriter, r *http.Request) {
 func getPostsWithIDLikes(w http.ResponseWriter, r *http.Request) {
 	// Query for pagination
 	page := r.URL.Query().Get("page")
-	pageint, err := strconv.Atoi(page)
-	checkErr(err)
 	limit := r.URL.Query().Get("limit")
-	limitint, err := strconv.Atoi(limit)
-	checkErr(err)
-	offset := (pageint - 1) * limitint
 
 	// Parameter for Post ID
 	postId := chi.URLParam(r, "id")
@@ -254,8 +258,20 @@ func getPostsWithIDLikes(w http.ResponseWriter, r *http.Request) {
 	checkErr(err)
 
 	// Query for posts
-	rows, err := database.DB.Query("SELECT likes.like_date, users.id, users.name, users.birthday, users.avatar FROM likes INNER JOIN users ON likes.user_id = users.id WHERE likes.post_id = $1 LIMIT $2 OFFSET $3", postIdInt, limitint, offset)
-	checkErr(err)
+	var rows *sql.Rows
+	if page != "" && limit != "" {
+		pageInt, err := strconv.Atoi(page)
+		checkErr(err)
+		limitInt, err := strconv.Atoi(limit)
+		checkErr(err)
+		offset := (pageInt - 1) * limitInt
+
+		rows, err = database.DB.Query("SELECT likes.like_date, users.id, users.name, users.birthday, users.avatar FROM likes INNER JOIN users ON likes.user_id = users.id WHERE likes.post_id = $1 ORDER BY users.id LIMIT $2 OFFSET $3", postIdInt, limitInt, offset)
+		checkErr(err)
+	} else {
+		rows, err = database.DB.Query("SELECT likes.like_date, users.id, users.name, users.birthday, users.avatar FROM likes INNER JOIN users ON likes.user_id = users.id WHERE likes.post_id = $1 ORDER BY users.id", postIdInt)
+		checkErr(err)
+	}
 	ListOfUsers := []PostsIdLikes{}
 
 	for rows.Next() {
